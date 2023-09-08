@@ -59,7 +59,6 @@ for i, (ip, count) in enumerate(dns_counts.items(), 1):
     host_count_str = f"{ip.ljust(max_host_width)}: {count}".ljust(max_host_width + 15)
     print(host_count_str, end=separator)
 
-
 # Calculate the number of rows and columns for subplots
 num_plots = len(dns_counts)
 num_cols = 4  # Number of columns
@@ -69,7 +68,7 @@ num_rows = (num_plots + num_cols - 1) // num_cols  # Calculate the number of row
 fig = plt.figure(figsize=(15, 4 * num_rows))
 fig.suptitle("DNS Requests Over Time", fontsize=16, y=1.02)  # Title above subplots
 
-# Create subplots for hosts with more than 1 DNS request
+# Create subplots for hosts
 for idx, (ip, count) in enumerate(dns_counts.items()):
     host_dns_counts = df_dns[df_dns['Source IP'] == ip]
 
@@ -79,16 +78,16 @@ for idx, (ip, count) in enumerate(dns_counts.items()):
     ax.set_xlabel('Time')
     ax.set_ylabel('DNS Requests Count')
 
-    # Set the x-axis limits to cover the entire time range
+    # Set the x-axis limits to cover the entire time range of the pcap by using first and last pcap packet's time
     ax.set_xlim(start_time, end_time)
 
-    # Format the x-axis labels as HH:MM:SS
+    # Format the x-axis labels
     ax.tick_params(axis='x', rotation=45)
 
     # Set the title for the subplot as the host's IP address
     ax.set_title(ip)
 
-# Remove empty subplots if there are fewer hosts than subplots
+# Remove empty subplots if there are fewer hosts than subplots - visualsiations formatting
 for idx in range(len(dns_counts), num_rows * num_cols):
     ax = fig.add_subplot(num_rows, num_cols, idx + 1)
     fig.delaxes(ax)
