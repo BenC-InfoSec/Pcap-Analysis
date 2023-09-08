@@ -1,0 +1,98 @@
+"""
+Description: Quickly check a pcap for DNS query frequency. Prints out a table and visualisations. 
+
+Requirements: A pcap file.
+
+To use: Change yourpcap.pcap to your pcap file. 
+
+Analysis tip:
+Investigate Hosts with uniformly increasing graphs as may indicate regular periodic calling to a beacon.
+Investigate Hosts with uncommon request frequencies.
+
+Note: Works in Jupyter Notebook
+"""
+
+import matplotlib.pyplot as plt
+from scapy.all import rdpcap, IP, DNS
+from datetime import datetime
+import pandas as pd
+
+# Load the PCAP file
+pcap_file = '2019-11-12-traffic-analysis-exercise.pcap'
+packets = rdpcap(pcap_file)
+
+# Create a list to store DNS request information
+dns_requests = []
+
+# Iterate through packets and extract DNS requests
+for packet in packets:
+    if DNS in packet and packet[DNS].qd:
+        # Explicitly convert packet.time to an integer as is UNIX Timestamp
+        dns_info = {
+            'Time': datetime.fromtimestamp(int(packet.time)),
+            'Source IP': packet[IP].src,
+            'Destination IP': packet[IP].dst,
+            'Query': packet[DNS].qd.qname.decode('utf-8')
+        }
+        dns_requests.append(dns_info)
+
+# Create a DataFrame from the DNS request data
+df_dns = pd.DataFrame(dns_requests)
+
+# Get DNS request counts by host
+dns_counts = df_dns['Source IP'].value_counts()
+
+# Exclude hosts with 1 or fewer DNS requests *** Could increase to adjust sensitivity  ***
+dns_counts = dns_counts[dns_counts > 1]
+
+# Calculate the time range from the first to the last packet to be used as X axis limits
+start_time = df_dns['Time'].min()
+end_time = df_dns['Time'].max()
+
+# Define the maximum width for the host column in the table - formatting of table
+max_host_width = max(len(ip) for ip in dns_counts.index)
+
+# Print the table of DNS request counts by host with 3 entries per line and left alignment
+print("DNS Request Counts by Host:")
+for i, (ip, count) in enumerate(dns_counts.items(), 1):
+    separator = " | " if i % 3 != 0 else "\n"
+    host_count_str = f"{ip.ljust(max_host_width)}: {count}".ljust(max_host_width + 15)
+    print(host_count_str, end=separator)
+
+
+# Calculate the number of rows and columns for subplots
+num_plots = len(dns_counts)
+num_cols = 4  # Number of columns
+num_rows = (num_plots + num_cols - 1) // num_cols  # Calculate the number of rows needed
+
+# Create a figure with a single title for the group of visualizations
+fig = plt.figure(figsize=(15, 4 * num_rows))
+fig.suptitle("DNS Requests Over Time", fontsize=16, y=1.02)  # Title above subplots
+
+# Create subplots for hosts with more than 1 DNS request
+for idx, (ip, count) in enumerate(dns_counts.items()):
+    host_dns_counts = df_dns[df_dns['Source IP'] == ip]
+
+    # Plot the count of DNS requests for the host over time
+    ax = fig.add_subplot(num_rows, num_cols, idx + 1)
+    ax.plot(host_dns_counts['Time'], range(len(host_dns_counts)), marker='o', linestyle='-')
+    ax.set_xlabel('Time')
+    ax.set_ylabel('DNS Requests Count')
+
+    # Set the x-axis limits to cover the entire time range
+    ax.set_xlim(start_time, end_time)
+
+    # Format the x-axis labels as HH:MM:SS
+    ax.tick_params(axis='x', rotation=45)
+
+    # Set the title for the subplot as the host's IP address
+    ax.set_title(ip)
+
+# Remove empty subplots if there are fewer hosts than subplots
+for idx in range(len(dns_counts), num_rows * num_cols):
+    ax = fig.add_subplot(num_rows, num_cols, idx + 1)
+    fig.delaxes(ax)
+
+# Adjust spacing between subplots
+plt.tight_layout()
+plt.show()
