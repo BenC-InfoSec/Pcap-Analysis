@@ -18,7 +18,7 @@ from datetime import datetime
 import pandas as pd
 
 # Load the PCAP file
-pcap_file = '2019-11-12-traffic-analysis-exercise.pcap'
+pcap_file = 'yourpcap.pcap'
 packets = rdpcap(pcap_file)
 
 # Create a list to store DNS request information
