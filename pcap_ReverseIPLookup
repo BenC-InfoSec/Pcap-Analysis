@@ -1,0 +1,122 @@
+"""
+Description: Quickly take a pcap and perform Reverse IP Lookup. Prints out 2 tables (resolved and unresolved) and a graph of unresolved IPs by country.
+
+Requirements: Geolocation database file available at https://www.maxmind.com/en/home. A pcap file.
+
+To use: Change Geolocation database to your database file. Change yourpcap.pcap to your pcap file.
+
+Analysis: 
+May help in triaging pcap files by identifying suspicious connections to investigate
+
+Note: Works in Jupyter Notebook
+"""
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import ipaddress
+from scapy.all import IP, rdpcap
+from geoip2.database import Reader
+from socket import gethostbyaddr
+
+
+# Load the PCAP file
+pcap_file = 'yourpcap.pcap'
+packets = rdpcap(pcap_file)
+
+# Load the GeoLite2-City.mmdb database
+geoip_reader = Reader('GeoLite2-City.mmdb')  # *** Replace with the path to your database file ***
+
+### Attempt to Reverse IP Lookup all IPs unless they are private / loopback or multicast ###
+
+# Create lists of unique IPv4 addresses 
+resolved_ipv4_addresses = set()
+unresolved_ipv4_addresses = set()
+
+# Iterate through packets and extract IPv4 addresses
+for packet in packets:
+    if 'IP' in packet:
+        src_ip = packet['IP'].src
+        dst_ip = packet['IP'].dst
+        
+        # Check if the IP addresses are not private, loopback, or multicast
+        if not (ipaddress.IPv4Address(src_ip).is_private
+                or ipaddress.IPv4Address(src_ip).is_loopback
+                or ipaddress.IPv4Address(src_ip).is_multicast):
+            try:
+                hostname, _, _ = gethostbyaddr(src_ip)
+                resolved_ipv4_addresses.add((src_ip, hostname))
+            except:
+                unresolved_ipv4_addresses.add(src_ip)
+            
+        if not (ipaddress.IPv4Address(dst_ip).is_private
+                or ipaddress.IPv4Address(dst_ip).is_loopback
+                or ipaddress.IPv4Address(dst_ip).is_multicast):
+            try:
+                hostname, _, _ = gethostbyaddr(dst_ip)
+                resolved_ipv4_addresses.add((dst_ip, hostname))
+            except:
+                unresolved_ipv4_addresses.add(dst_ip)
+
+# Create DataFrames for resolved and unresolved IP addresses (To be used to create tables / visualisations)
+df_resolved = pd.DataFrame(resolved_ipv4_addresses, columns=['IP Address', 'Hostname'])
+df_unresolved = pd.DataFrame({'IP Address': list(unresolved_ipv4_addresses)})
+
+
+### Display 2 tables: Resolved and unresolved IP addresses ###
+
+# Define table titles
+resolved_title = "Resolved IP Addresses"
+unresolved_title = "Unresolved IP Addresses"
+
+# Display the resolved IP;s table
+print(resolved_title)
+display(df_resolved)
+
+# Display the unresolved IP's table
+print(unresolved_title)
+display(df_unresolved)
+
+
+### Geo look up Unresolved IPs and create a visualisation ###
+
+# Create a dictionary to store country-count pairs
+country_count = {}
+
+# Iterate through IP addresses and get their geolocations
+for ip_address in unresolved_ipv4_addresses:
+    try:
+        response = geoip_reader.city(ip_address)
+        country_name = response.country.name
+        
+        # Check if the country name is valid (not empty or None)
+        if country_name and country_name != 'None':
+            # Update the country-count dictionary
+            if country_name in country_count:
+                country_count[country_name] += 1
+            else:
+                country_count[country_name] = 1
+#      --- TO DO: Get the IPs that do not have Geo information displayed ---
+    except Exception as e:
+        print(f'IP: {ip_address}, Error: {e}')
+
+# Close the GeoLite2 database reader
+geoip_reader.close()
+
+# Print the dictionary of country-count pairs
+for country, count in country_count.items():
+    print(f'Country: {country}, Count: {count}')
+    
+df = pd.DataFrame(list(country_count.items()), columns=['Country', 'Count'])
+
+# Sort the DataFrame by count in descending order
+df = df.sort_values(by='Count', ascending=False)
+
+#bar chart
+plt.figure(figsize=(12, 6))
+sns.barplot(x='Country', y='Count', data=df, palette='rocket_r')
+plt.title('Unresolved hostname Countries')
+plt.xlabel('Country')
+plt.ylabel('Count')
+plt.xticks(rotation=90)  # Rotate x-axis labels for better readability
+plt.show()
